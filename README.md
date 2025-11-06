@@ -21,8 +21,11 @@ It integrates different data structures (Queue, Array/List, BST, Heap) to manage
 
 dsa-mini-project/
 │
+
 ├── main.c # Contains the main() function and top-level menu system
+
 ├── functions.c # Contains all module logic (Queue, BST, Heap, Array)
+
 └── README.md # Project documentation
 
 
@@ -36,3 +39,4 @@ To compile and run the project:
 ```bash
 gcc main.c functions.c 
 ./a.exe
+
