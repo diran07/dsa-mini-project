@@ -175,7 +175,7 @@ void assetInventoryMenu(void) {
 
         switch (choice) {
         case 1:
-            printf("\n➡ Adding a new asset...\n");
+            printf("\n Adding a new asset...\n");
             printf("Enter a 4-digit Asset ID (1000–9999): ");
             if (scanf("%d", &id) != 1 || !validate_id(id)) {
                 printf(" Invalid ID! Please enter a 4-digit number between 1000 and 9999.\n");
@@ -196,7 +196,7 @@ void assetInventoryMenu(void) {
             break;
 
         case 2:
-            printf("\n➡ Updating an existing asset...\n");
+            printf("\nUpdating an existing asset...\n");
             printf("Enter existing 4-digit Asset ID: ");
             if (scanf("%d", &id) != 1 || !validate_id(id)) {
                 printf(" Invalid ID! Please enter a 4-digit number between 1000 and 9999.\n");
@@ -220,7 +220,7 @@ void assetInventoryMenu(void) {
             break;
 
         case 3: {
-            printf("\n➡ Searching for an asset...\n");
+            printf("\n Searching for an asset...\n");
             printf("Enter 4-digit Asset ID to search: ");
             if (scanf("%d", &id) != 1 || !validate_id(id)) {
                 printf(" Invalid ID! Please enter a 4-digit number between 1000 and 9999.\n");
