@@ -156,7 +156,7 @@ void assetInventoryMenu(void) {
         printf("5  View Asset Count by Status\n");
         printf("6  Exit the Program\n");
         printf("================================================================\n");
-        printf("👉 Enter your choice (1-6): ");
+        printf(" Enter your choice (1-6): ");
 
         if (scanf("%d", &choice) != 1) {
             printf(" Invalid input! Please enter a number between 1 and 6.\n");
@@ -230,14 +230,14 @@ void assetInventoryMenu(void) {
 
             int idx = asset_search_index(id);
             if (idx >= 0) {
-                printf("\n✅ Asset found:\n");
+                printf("\n Asset found:\n");
                 asset_display_one(&g_assets[idx]);
             } else
                 printf(" Asset not found.\n");
         } break;
 
         case 4:
-            printf("\n📋 Displaying all assets...\n");
+            printf("\n Displaying all assets...\n");
             asset_display_all();
             break;
 
