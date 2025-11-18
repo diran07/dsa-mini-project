@@ -176,7 +176,7 @@ void assetInventoryMenu(void) {
         switch (choice) {
         case 1:
             printf("\n Adding a new asset...\n");
-            printf("Enter a 4-digit Asset ID (1000–9999): ");
+            printf("Enter a 4-digit Asset ID (1000-9999): ");
             if (scanf("%d", &id) != 1 || !validate_id(id)) {
                 printf(" Invalid ID! Please enter a 4-digit number between 1000 and 9999.\n");
                 while (getchar() != '\n');
