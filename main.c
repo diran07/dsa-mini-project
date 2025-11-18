@@ -15,8 +15,8 @@ int main(void) {
         printf("        MAIN PROJECT MENU     \n");
         printf("==============================\n");
         printf("1. Asset Inventory\n");
-        printf("2. BST Load Manager\n");
-        printf("3. Heap Manager\n");
+        printf("2. Server Load Manager\n");
+        printf("3. Task Priority Manager\n");
         printf("4. Server Health\n");
         printf("5. Exit\n");
         printf("Enter your choice: ");
