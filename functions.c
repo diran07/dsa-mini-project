@@ -583,9 +583,9 @@ static HeapTask heap_extract_min(MinHeap *h) {
     h->size--;
     heapify_down(h, 0);
     printf("\n  Extracted Most Urgent Task:\n");
-    printf("    → Task ID: %d\n", root.task_id);
-    printf("    → Task Name: %s\n", root.task_name);
-    printf("    → Priority: %d\n", root.priority);
+    printf("    Task ID: %d\n", root.task_id);
+    printf("    Task Name: %s\n", root.task_name);
+    printf("    Priority: %d\n", root.priority);
     return root;
 }
 
@@ -630,7 +630,7 @@ void heapSchedulerMenu(void) {
         printf("Enter your choice (1-4): ");
 
         if (scanf("%d", &choice) != 1) {
-            printf(" Invalid input! Please enter a number (1–4).\n");
+            printf(" Invalid input! Please enter a number (1-4).\n");
             while (getchar() != '\n');
             continue;
         }
@@ -668,10 +668,13 @@ void heapSchedulerMenu(void) {
 
             case 3:
                 heap_extract_min(&scheduler);
+                printf("\n");
+                printf("current task available now :\n");
+                heap_display(&scheduler);
                 break;
 
             default:
-                printf("Invalid choice! Please enter 1–4.\n");
+                printf("Invalid choice! Please enter 1-4.\n");
         }
     }
 }
