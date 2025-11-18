@@ -643,17 +643,17 @@ void heapSchedulerMenu(void) {
         switch (choice) {
             case 1:
                 printf("\n Adding a New Task:\n");
-                printf("   → Enter a numeric Task ID (e.g., 101): ");
+                printf(" Enter a numeric Task ID (e.g., 101): ");
                 if (scanf("%d", &id) != 1) {
                     printf("Invalid input! Task ID must be a number.\n");
                     while (getchar() != '\n');
                     break;
                 }
                 getchar(); // clear newline
-                printf("   → Enter a short Task Name (e.g., 'Oil Check'): ");
+                printf(" Enter a short Task Name (e.g., 'Oil Check'): ");
                 fgets(name, sizeof(name), stdin);
                 name[strcspn(name, "\n")] = '\0';
-                printf("   → Enter Priority (1 = highest urgency, higher = less urgent): ");
+                printf("  Enter Priority (1 = highest urgency, higher = less urgent): ");
                 if (scanf("%d", &priority) != 1) {
                     printf("Invalid input! Priority must be a number.\n");
                     while (getchar() != '\n');
