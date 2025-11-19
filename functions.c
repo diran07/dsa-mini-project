@@ -5,29 +5,71 @@
 
 #define ASSET_MAX 200
 #define ASSET_NAME_LEN 64
-#define ASSET_STATUS_LEN 16
+#define USERNAME_LEN 32
+#define PASSWORD_LEN 32
+#define REQUEST_MAX 100
 
 typedef struct {
     int asset_id;
     char name[ASSET_NAME_LEN];
-    char status[ASSET_STATUS_LEN]; /* "active" or "inactive" */
+    int count; /* quantity available */
 } Asset;
+
+typedef struct {
+    int request_id;
+    int asset_id;
+    char asset_name[ASSET_NAME_LEN];
+    int quantity;
+    int approved; /* 0 = pending, 1 = approved, -1 = rejected */
+} AssetRequest;
+
+typedef enum {
+    ROLE_NONE = 0,
+    ROLE_CLIENT = 1,
+    ROLE_ADMIN = 2
+} UserRole;
 
 static Asset g_assets[ASSET_MAX];
 static int g_asset_count = 0;
+static AssetRequest g_requests[REQUEST_MAX];
+static int g_request_count = 0;
+static int g_next_request_id = 1;
+UserRole current_role = ROLE_NONE;
 
 /* --- Utility: lowercase conversion --- */
-static void to_lowercase(char *s) {
+static void to_lowercase_inplace(char *s) {
     for (int i = 0; s[i]; ++i)
         s[i] = (char)tolower((unsigned char)s[i]);
 }
 
-/* --- Display Functions --- */
-static void asset_display_one(const Asset *a) {
-    printf("Asset ID: %d | Name: %s | Status: %s\n",
-           a->asset_id, a->name, a->status);
+/* Return 1 if equal case-insensitive, 0 otherwise */
+static int str_iequals(const char *a, const char *b) {
+    char ta[ASSET_NAME_LEN];
+    char tb[ASSET_NAME_LEN];
+
+    strncpy(ta, a, sizeof(ta) - 1);
+    ta[sizeof(ta) - 1] = '\0';
+    strncpy(tb, b, sizeof(tb) - 1);
+    tb[sizeof(tb) - 1] = '\0';
+
+    to_lowercase_inplace(ta);
+    to_lowercase_inplace(tb);
+
+    return strcmp(ta, tb) == 0;
 }
 
+/* --- Display one Asset --- */
+static void asset_display_one(const Asset *a) {
+    if (a->count == 0) {
+        printf("Asset ID: %d | Name: %s | Count: %d (BUYING NEW ASSETS)\n",
+               a->asset_id, a->name, a->count);
+    } else {
+        printf("Asset ID: %d | Name: %s | Count: %d\n",
+               a->asset_id, a->name, a->count);
+    }
+}
+
+/* --- View All Assets --- */
 static void asset_display_all(void) {
     printf("\n--- Current Asset Inventory ---\n");
     if (g_asset_count == 0) {
@@ -35,12 +77,15 @@ static void asset_display_all(void) {
         return;
     }
 
-    printf("%-10s %-20s %-10s\n", "Asset ID", "Name", "Status");
+    printf("%-10s %-30s %-10s %-20s\n", "Asset ID", "Name", "Count", "Status");
+    printf("--------------------------------------------------------------------------------\n");
+
     for (int i = 0; i < g_asset_count; ++i) {
-        printf("%-10d %-20s %-10s\n",
+        printf("%-10d %-30s %-10d %-20s\n",
                g_assets[i].asset_id,
                g_assets[i].name,
-               g_assets[i].status);
+               g_assets[i].count,
+               g_assets[i].count == 0 ? "BUYING NEW ASSETS" : "Available");
     }
 }
 
@@ -57,15 +102,12 @@ static int validate_id(int id) {
     return (id >= 1000 && id <= 9999);
 }
 
-static int validate_status(const char *status) {
-    char s[ASSET_STATUS_LEN];
-    strncpy(s, status, sizeof(s) - 1);
-    s[sizeof(s) - 1] = '\0';
-    to_lowercase(s);
-    return (strcmp(s, "active") == 0 || strcmp(s, "inactive") == 0);
-}
-
-static void asset_add(int id, const char *name, const char *status) {
+static void asset_add(int id, const char *name, int count) {
+    if (current_role != ROLE_ADMIN) {
+        printf(" ACCESS DENIED! Only administrators can add assets.\n");
+        return;
+    }
+    
     if (g_asset_count >= ASSET_MAX) {
         printf(" Inventory full! Cannot add more assets.\n");
         return;
@@ -75,27 +117,26 @@ static void asset_add(int id, const char *name, const char *status) {
         return;
     }
 
-    char status_lower[ASSET_STATUS_LEN];
-    strncpy(status_lower, status, sizeof(status_lower) - 1);
-    status_lower[sizeof(status_lower) - 1] = '\0';
-    to_lowercase(status_lower);
-
-    if (!validate_status(status_lower)) {
-        printf(" Invalid status! Please enter 'Active' or 'Inactive'.\n");
+    if (count < 0) {
+        printf(" Invalid count! Count must be 0 or greater.\n");
         return;
     }
 
     g_assets[g_asset_count].asset_id = id;
     strncpy(g_assets[g_asset_count].name, name, ASSET_NAME_LEN - 1);
     g_assets[g_asset_count].name[ASSET_NAME_LEN - 1] = '\0';
-    strncpy(g_assets[g_asset_count].status, status_lower, ASSET_STATUS_LEN - 1);
-    g_assets[g_asset_count].status[ASSET_STATUS_LEN - 1] = '\0';
+    g_assets[g_asset_count].count = count;
 
     ++g_asset_count;
     printf(" Added Asset %d successfully!\n", id);
 }
 
-static void asset_update(int id, const char *newName, const char *newStatus) {
+static void asset_update(int id, const char *newName, int newCount) {
+    if (current_role != ROLE_ADMIN) {
+        printf(" ACCESS DENIED! Only administrators can update assets.\n");
+        return;
+    }
+    
     int idx = asset_search_index(id);
     if (idx < 0) {
         printf(" Asset %d not found.\n", id);
@@ -107,38 +148,193 @@ static void asset_update(int id, const char *newName, const char *newStatus) {
         g_assets[idx].name[ASSET_NAME_LEN - 1] = '\0';
     }
 
-    if (newStatus && *newStatus) {
-        char lowerStatus[ASSET_STATUS_LEN];
-        strncpy(lowerStatus, newStatus, sizeof(lowerStatus) - 1);
-        lowerStatus[sizeof(lowerStatus) - 1] = '\0';
-        to_lowercase(lowerStatus);
-
-        if (!validate_status(lowerStatus)) {
-            printf(" Invalid status! Please enter 'Active' or 'Inactive'.\n");
-            return;
-        }
-
-        strncpy(g_assets[idx].status, lowerStatus, ASSET_STATUS_LEN - 1);
-        g_assets[idx].status[ASSET_STATUS_LEN - 1] = '\0';
+    if (newCount >= 0) {
+        g_assets[idx].count = newCount;
     }
 
     printf(" Updated Asset %d successfully!\n", id);
     asset_display_one(&g_assets[idx]);
 }
 
-static void asset_count_by_status(void) {
-    int active = 0, inactive = 0;
+/* --- Request Asset (Client) --- */
+static void asset_request(void) {
+    if (current_role != ROLE_CLIENT) {
+        printf(" This function is for clients only.\n");
+        return;
+    }
+
+    if (g_request_count >= REQUEST_MAX) {
+        printf(" Request queue is full!\n");
+        return;
+    }
+
+    int id, quantity;
+    printf("Enter Asset ID to request: ");
+    if (scanf("%d", &id) != 1 || !validate_id(id)) {
+        printf("Invalid ID.\n");
+        while (getchar() != '\n');
+        return;
+    }
+
+    int idx = asset_search_index(id);
+    if (idx < 0) {
+        printf("Asset not found.\n");
+        return;
+    }
+
+    printf("Enter quantity needed: ");
+    if (scanf("%d", &quantity) != 1 || quantity <= 0) {
+        printf("Invalid quantity.\n");
+        while (getchar() != '\n');
+        return;
+    }
+
+    // Create request
+    g_requests[g_request_count].request_id = g_next_request_id++;
+    g_requests[g_request_count].asset_id = id;
+    strncpy(g_requests[g_request_count].asset_name, g_assets[idx].name, ASSET_NAME_LEN - 1);
+    g_requests[g_request_count].asset_name[ASSET_NAME_LEN - 1] = '\0';
+    g_requests[g_request_count].quantity = quantity;
+    g_requests[g_request_count].approved = 0; // pending
+
+    printf("\n Request submitted successfully!\n");
+    printf(" Request ID: %d\n", g_requests[g_request_count].request_id);
+    printf(" Asset: %s (ID: %d)\n", g_requests[g_request_count].asset_name, id);
+    printf(" Quantity: %d\n", quantity);
+    printf(" Status: Pending Admin Approval\n");
+
+    ++g_request_count;
+}
+
+/* --- View Pending Requests (Admin) --- */
+static void view_pending_requests(void) {
+    if (current_role != ROLE_ADMIN) {
+        printf(" ACCESS DENIED! Only administrators can view requests.\n");
+        return;
+    }
+
+    printf("\n--- Pending Asset Requests ---\n");
+    int found = 0;
+    for (int i = 0; i < g_request_count; ++i) {
+        if (g_requests[i].approved == 0) {
+            printf("Request ID: %d | Asset: %s (ID: %d) | Quantity: %d | Status: PENDING\n",
+                   g_requests[i].request_id,
+                   g_requests[i].asset_name,
+                   g_requests[i].asset_id,
+                   g_requests[i].quantity);
+            found = 1;
+        }
+    }
+    if (!found) {
+        printf("No pending requests.\n");
+    }
+}
+
+/* --- Approve/Reject Request (Admin) --- */
+static void process_request(void) {
+    if (current_role != ROLE_ADMIN) {
+        printf(" ACCESS DENIED! Only administrators can process requests.\n");
+        return;
+    }
+
+    int req_id;
+    printf("Enter Request ID to process: ");
+    if (scanf("%d", &req_id) != 1) {
+        printf("Invalid ID.\n");
+        while (getchar() != '\n');
+        return;
+    }
+
+    // Find request
+    int req_idx = -1;
+    for (int i = 0; i < g_request_count; ++i) {
+        if (g_requests[i].request_id == req_id && g_requests[i].approved == 0) {
+            req_idx = i;
+            break;
+        }
+    }
+
+    if (req_idx < 0) {
+        printf("Request not found or already processed.\n");
+        return;
+    }
+
+    // Find asset
+    int asset_idx = asset_search_index(g_requests[req_idx].asset_id);
+    if (asset_idx < 0) {
+        printf("Asset no longer exists.\n");
+        return;
+    }
+
+    printf("\nRequest Details:\n");
+    printf("Asset: %s (ID: %d)\n", g_requests[req_idx].asset_name, g_requests[req_idx].asset_id);
+    printf("Quantity Requested: %d\n", g_requests[req_idx].quantity);
+    printf("Current Stock: %d\n", g_assets[asset_idx].count);
+
+    int choice;
+    printf("\n1. Approve\n2. Reject\nEnter choice: ");
+    if (scanf("%d", &choice) != 1) {
+        printf("Invalid choice.\n");
+        while (getchar() != '\n');
+        return;
+    }
+
+    if (choice == 1) {
+        // Approve
+        if (g_assets[asset_idx].count < g_requests[req_idx].quantity) {
+            printf("\n WARNING: Insufficient stock! Current: %d, Requested: %d\n",
+                   g_assets[asset_idx].count, g_requests[req_idx].quantity);
+            printf("Approve anyway? (1=Yes, 0=No): ");
+            int confirm;
+            if (scanf("%d", &confirm) != 1 || confirm != 1) {
+                printf("Request not approved.\n");
+                return;
+            }
+        }
+
+        g_assets[asset_idx].count -= g_requests[req_idx].quantity;
+        if (g_assets[asset_idx].count < 0) {
+            g_assets[asset_idx].count = 0;
+        }
+
+        g_requests[req_idx].approved = 1;
+        printf("\n Request APPROVED!\n");
+        printf(" Asset '%s' count reduced from %d to %d\n",
+               g_assets[asset_idx].name,
+               g_assets[asset_idx].count + g_requests[req_idx].quantity,
+               g_assets[asset_idx].count);
+
+        if (g_assets[asset_idx].count == 0) {
+            printf(" ** ALERT: Asset count is now 0. BUYING NEW ASSETS! **\n");
+        }
+    } else if (choice == 2) {
+        // Reject
+        g_requests[req_idx].approved = -1;
+        printf("\n Request REJECTED!\n");
+    } else {
+        printf("Invalid choice.\n");
+    }
+}
+
+/* --- Summary Page: Total Count and Assets --- */
+static void asset_summary(void) {
+    int total_items = 0;
+    int out_of_stock = 0;
 
     for (int i = 0; i < g_asset_count; ++i) {
-        if (strcmp(g_assets[i].status, "active") == 0)
-            active++;
-        else if (strcmp(g_assets[i].status, "inactive") == 0)
-            inactive++;
+        total_items += g_assets[i].count;
+        if (g_assets[i].count == 0) {
+            out_of_stock++;
+        }
     }
 
     printf("\n Asset Summary:\n");
-    printf("Active Assets   : %d\n", active);
-    printf("Inactive Assets : %d\n", inactive);
+    printf("Total unique assets: %d\n", g_asset_count);
+    printf("Total item count   : %d\n", total_items);
+    printf("Out of stock       : %d\n", out_of_stock);
+    if (out_of_stock > 0) {
+        printf("\n** %d asset(s) need restocking - BUYING NEW ASSETS **\n", out_of_stock);
+    }
 }
 
 /* --- Menu Function --- */
@@ -147,106 +343,160 @@ void assetInventoryMenu(void) {
 
     while (1) {
         printf("\n================= ASSET INVENTORY MANAGEMENT =================\n");
-        printf(" Tip: Before updating or searching, use option 4 to view all assets.\n");
+        printf("Logged in as: %s\n", current_role == ROLE_ADMIN ? "ADMINISTRATOR" : "CLIENT");
         printf("----------------------------------------------------------------\n");
-        printf("1  Add a new Asset\n");
-        printf("2  Update an existing Asset\n");
-        printf("3  Search for an Asset\n");
-        printf("4  View all Assets\n");
-        printf("5  View Asset Count by Status\n");
-        printf("6  Exit the Program\n");
+        
+        if (current_role == ROLE_ADMIN) {
+            printf("1  Add a new Asset\n");
+            printf("2  Update an existing Asset\n");
+            printf("3  Search for an Asset\n");
+            printf("4  View all Assets\n");
+            printf("5  View Asset Summary\n");
+            printf("6  View Pending Requests\n");
+            printf("7  Approve/Reject Request\n");
+            printf("8  Back\n");
+        } else {
+            printf("1  Search for an Asset\n");
+            printf("2  View all Assets\n");
+            printf("3  View Asset Summary\n");
+            printf("4  Request an Asset\n");
+            printf("5  Back\n");
+        }
+        
         printf("================================================================\n");
-        printf(" Enter your choice (1-6): ");
+        printf(" Enter your choice: ");
 
         if (scanf("%d", &choice) != 1) {
-            printf(" Invalid input! Please enter a number between 1 and 6.\n");
+            printf(" Invalid input! Please enter a valid number.\n");
             while (getchar() != '\n');
             continue;
         }
 
-        if (choice == 6) {
-            printf("\n Exiting Asset Management System...\n");
-            return;
-        }
-
         int id;
         char name[ASSET_NAME_LEN];
-        char status[ASSET_STATUS_LEN];
+        int count;
 
-        switch (choice) {
-        case 1:
-            printf("\n Adding a new asset...\n");
-            printf("Enter a 4-digit Asset ID (1000-9999): ");
-            if (scanf("%d", &id) != 1 || !validate_id(id)) {
-                printf(" Invalid ID! Please enter a 4-digit number between 1000 and 9999.\n");
-                while (getchar() != '\n');
+        if (current_role == ROLE_ADMIN) {
+            if (choice == 8) return;
+            
+            switch (choice) {
+            case 1:
+                printf("Enter Asset ID (1000-9999): ");
+                if (scanf("%d", &id) != 1 || !validate_id(id)) {
+                    printf("Invalid ID.\n");
+                    while (getchar() != '\n');
+                    break;
+                }
+                getchar();
+
+                printf("Enter Name: ");
+                fgets(name, sizeof(name), stdin);
+                name[strcspn(name, "\n")] = '\0';
+
+                printf("Enter Count: ");
+                if (scanf("%d", &count) != 1) {
+                    printf("Invalid count.\n");
+                    while (getchar() != '\n');
+                    break;
+                }
+
+                asset_add(id, name, count);
                 break;
-            }
-            getchar();
 
-            printf("Enter Asset Name: ");
-            fgets(name, sizeof(name), stdin);
-            name[strcspn(name, "\n")] = '\0';
+            case 2:
+                printf("Enter Asset ID to update: ");
+                if (scanf("%d", &id) != 1 || !validate_id(id)) {
+                    printf("Invalid ID.\n");
+                    while (getchar() != '\n');
+                    break;
+                }
+                getchar();
 
-            printf("Enter Status (Active/Inactive): ");
-            scanf(" %15s", status);
-            to_lowercase(status);
+                printf("Enter New Name (or '-' to skip): ");
+                fgets(name, sizeof(name), stdin);
+                name[strcspn(name, "\n")] = '\0';
 
-            asset_add(id, name, status);
-            break;
+                printf("Enter New Count (or -1 to skip): ");
+                if (scanf("%d", &count) != 1) {
+                    printf("Invalid count.\n");
+                    break;
+                }
 
-        case 2:
-            printf("\nUpdating an existing asset...\n");
-            printf("Enter existing 4-digit Asset ID: ");
-            if (scanf("%d", &id) != 1 || !validate_id(id)) {
-                printf(" Invalid ID! Please enter a 4-digit number between 1000 and 9999.\n");
-                while (getchar() != '\n');
+                asset_update(id, (strcmp(name, "-") == 0 ? NULL : name), count);
                 break;
-            }
-            getchar();
 
-            printf("Enter New Name (or '-' to skip): ");
-            fgets(name, sizeof(name), stdin);
-            name[strcspn(name, "\n")] = '\0';
+            case 3:
+                printf("Enter Asset ID to search: ");
+                if (scanf("%d", &id) != 1 || !validate_id(id)) {
+                    printf("Invalid ID.\n");
+                    while (getchar() != '\n');
+                    break;
+                }
 
-            printf("Enter New Status (Active/Inactive or '-' to skip): ");
-            scanf(" %15s", status);
-
-            if (strcmp(status, "-") != 0)
-                to_lowercase(status);
-
-            asset_update(id, (strcmp(name, "-") == 0 ? NULL : name),
-                              (strcmp(status, "-") == 0 ? NULL : status));
-            break;
-
-        case 3: {
-            printf("\n Searching for an asset...\n");
-            printf("Enter 4-digit Asset ID to search: ");
-            if (scanf("%d", &id) != 1 || !validate_id(id)) {
-                printf(" Invalid ID! Please enter a 4-digit number between 1000 and 9999.\n");
-                while (getchar() != '\n');
+                {
+                    int idx = asset_search_index(id);
+                    if (idx >= 0)
+                        asset_display_one(&g_assets[idx]);
+                    else
+                        printf("Asset not found.\n");
+                }
                 break;
+
+            case 4:
+                asset_display_all();
+                break;
+
+            case 5:
+                asset_summary();
+                break;
+
+            case 6:
+                view_pending_requests();
+                break;
+
+            case 7:
+                process_request();
+                break;
+
+            default:
+                printf("Invalid choice.\n");
             }
+        } else { // CLIENT
+            if (choice == 5) return;
+            
+            switch (choice) {
+            case 1:
+                printf("Enter Asset ID to search: ");
+                if (scanf("%d", &id) != 1 || !validate_id(id)) {
+                    printf("Invalid ID.\n");
+                    while (getchar() != '\n');
+                    break;
+                }
 
-            int idx = asset_search_index(id);
-            if (idx >= 0) {
-                printf("\n Asset found:\n");
-                asset_display_one(&g_assets[idx]);
-            } else
-                printf(" Asset not found.\n");
-        } break;
+                {
+                    int idx = asset_search_index(id);
+                    if (idx >= 0)
+                        asset_display_one(&g_assets[idx]);
+                    else
+                        printf("Asset not found.\n");
+                }
+                break;
 
-        case 4:
-            printf("\n Displaying all assets...\n");
-            asset_display_all();
-            break;
+            case 2:
+                asset_display_all();
+                break;
 
-        case 5:
-            asset_count_by_status();
-            break;
+            case 3:
+                asset_summary();
+                break;
 
-        default:
-            printf(" Invalid choice! Please select a number between 1 and 6.\n");
+            case 4:
+                asset_request();
+                break;
+
+            default:
+                printf("Invalid choice.\n");
+            }
         }
     }
 }
