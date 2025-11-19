@@ -27,6 +27,8 @@ dsa-mini-project/
 
 ├── functions.c # Contains all module logic (Queue, BST, Heap, Array)
 
+├── functions.h # Contains all data structure and functions declarations
+
 └── README.md # Project documentation
 
 
@@ -40,5 +42,6 @@ To compile and run the project:
 ```bash
 gcc main.c functions.c 
 ./a.exe
+
 
 
